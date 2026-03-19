@@ -6,15 +6,13 @@ This is a package of functions for use with the RATTUS project database. Current
 
 ### Installing ratdbtools
 
-Since the repo is structuring as a package, you can install from inside R using the **devtools** package:
+Since the repo is structured as a package, you can install from inside R using the **devtools** package:
 
 (NB this can all be done through github now, use install_github("York-Rattus/ratdbtools")
 
-1. Create an app password for Bitbucket by going to *Settings > Personal Bitbucket settings > App passwords* and clicking on **Create app password**
-2. Save this somewhere safe, as you won't be able to see it again.
-3. Install devtools: `install.packages("devtools")`
-4. Load the devtools package: `library(devtools)`
-5. Use it to install ratdbtools: `install_bitbucket("rattus-code/ratdbtools", force = T, auth_user = "<yourUserName>", password="<yourAppPassword>")`
+1. Install devtools: `install.packages("devtools")`
+2. Load the devtools package: `library(devtools)`
+3. Use it to install ratdbtools: `install_github("York-Rattus/ratdbtools")`
 
 ## Functions
 
@@ -22,10 +20,21 @@ Since the repo is structuring as a package, you can install from inside R using 
 These import a version of the RATTUS database from the specified location, and save it to the working environment as a list of data.tables.
 
 #### rattusPull - import database from MySQL
-`x <- rattusPull(connection = default)`
+`x <- rattusPull(connection)`
 
-* **connection** MySQLConnection object defining the database connection to read from. Optional; defaults to the rattus_read account.
+* **connection** MySQLConnection object defining the database connection to read from. Use the `dbConnect` function to create a connecton object using the RATTUS project credentials.
 
+* **bestDate** Should a set of columns be added to SPECIMEN to show the best available dating info drawn from across all tables? (Defaults to TRUE)
+* **bestSpecies** Should a set of columns be added to SPECIMEN to show the most confident species ID available? (Defaults to TRUE)
+* **prepMetrics** Should the fusion status of the relevant end(s) for each metric value be worked out and appended to the METRICS table? (Defaults to FALSE)
+
+#### rattusDecode - decode lookup columns in an R copy of the database
+`x <- rattusDecode(db)`
+
+* **db** An R copy of the database, as created by one of the rattusPull functions.
+* **lookups** Should true lookup fields be decoded? True by default
+* **keyfields** Character vector of tables (from PHASE, SPECIMEN, ASSEMBLAGE) into which key fields should be merged.
+  
 #### rattusPullGoogle - import database from Google Sheets version (now unlikely to be used)
 `x <- rattusPull(litMod, specMod)`
 
@@ -38,6 +47,7 @@ These import a version of the RATTUS database from the specified location, and s
 * **path** path to folder in which the database dump (i.e. set of .csv files) is stored.
 
 ### rattusPush - write a version of the database from the R environment to an existing MySQL instance
+Nb. this will only work with a local version; the UoY server won't allow it.
 `rattusPush(db, connection, prompt = T, report = T, returnDroppedRows = T)`
 
 * **db** a RATTUS database object, i.e. a list of data.tables as produced by `rattusPull` or similar.
