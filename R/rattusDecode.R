@@ -82,10 +82,13 @@ rattusDecode <- function(db, lookups = T, keyfields = NULL) {
                    contentCols = "SITE_CAT_2")
 
             # Apply it to assemblage table
-            setnames(db$ASSEMBLAGE, skip_absent = T, old = "ASSEMBLAGE_ENTRY_TYPE", new = "ASSEMBLAGE_ENTRY_TYPE_ID")
+            setnames(db$ASSEMBLAGE, skip_absent = T, old = c("ASSEMBLAGE_ENTRY_TYPE", "COVERAGE"), new = c("ASSEMBLAGE_ENTRY_TYPE_ID", "COVERAGE_ID"))
             decode(table = "ASSEMBLAGE", lookup = "assemblage_entry_type",
                    tableIDcol = "ASSEMBLAGE_ENTRY_TYPE_ID", lookupIDcol = "ASSEMBLAGE_ENTRY_TYPE_ID",
                    contentCols = "ASSEMBLAGE_ENTRY_TYPE")
+            decode(table = "ASSEMBLAGE", lookup = "coverage",
+                   tableIDcol = "COVERAGE_ID", lookupIDcol = "COVERAGE_ID",
+                   contentCols = "COVERAGE")
 
             # Apply it to individual table
             setnames(db$INDIVIDUAL, skip_absent = T, old = c("INDIVIDUAL_TYPE"), new = c("INDIVIDUAL_TYPE_ID"))

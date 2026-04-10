@@ -4,7 +4,7 @@
 #' @param bestDate Should a set of columns be added to SPECIMEN to show the best available dating info drawn from across all tables?
 #' @param bestSpecies Should a set of columns be added to SPECIMEN to show the most confident species ID available?
 #' @param prepMetrics Should the fusion status of the relevant end(s) for each metric value be worked out and appended to the METRICS table?
-#' @return a list of (currently) 32 data.tables
+#' @return a list of (currently) 33 data.tables
 #'
 #' @export
 
@@ -30,7 +30,7 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
       db <- list(taxon = taxon, element = element, measurements = measurements,
                        site_cat_1 = site_cat_1, site_cat_2 = site_cat_2, tags = tags,
                        assemblage_entry_type = assemblage_entry_type, individual_type = individual_type,
-                       phase_entry_type = phase_entry_type, site_entry_type = site_entry_type,
+                       phase_entry_type = phase_entry_type, site_entry_type = site_entry_type, coverage = coverage,
                        SITE = SITE, PHASE = PHASE, CONTEXT = CONTEXT, INDIVIDUAL = INDIVIDUAL,
                        SPECIMEN = SPECIMEN, SAMPLE = SAMPLE,
                        METRICS = METRICS, MEDIA = MEDIA, ISOTOPES = ISOTOPES,
