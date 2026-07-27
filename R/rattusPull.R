@@ -39,7 +39,7 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
                        SOURCE = SOURCE, ENTRY = ENTRY, NAME_USE = NAME_USE, TROPE_MENTION = TROPE_MENTION,
                        PLACE_MENTION = PLACE_MENTION, TROPE = TROPE, PLACE = PLACE)
 
-      # Loop through list sort tables by ID field
+      # Loop through list sorting tables by ID field
       for(i in 1:length(db)) {
             idCol <- colnames(db[[i]])[1]
             db[[i]] <- db[[i]][order(get(idCol))]
@@ -148,7 +148,7 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
                                  by = "SPECIMEN_ID", all.x = T, all.y = F)
       }
 
-      ### FIND BEST SPECIES INFO TO BE INSERTED HERE
+      ### FIND BEST SPECIES INFO
       ## We have the following ranks, from best to worst
       # (a) Molecular IDs (from DNA or ZOOMS)                                                         --> SCORE=4
       # (b) Confident ID on a museum/reference specimen (from INDIVIDUAL)                                       3
@@ -165,15 +165,17 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
       # 3. Score contexts, based on constituent specimens
       # 4. Merge all together
 
-      # One big problem: non-rats
-
       ## First merge in all the relevant columns (dropping anything that's not listed as rat)
       if(bestSpecies == T) {
 
+            ## Get list of molecular IDs that aren't specific enough to override morpho
+            vagueTaxa <- db$taxon[LEVEL %in% c("Family", "Order"), TAXON_ID]    # Taxa tagged as family- or order-level
+            vagueTaxa <- c(vagueTaxa, 4, 5, 175)                              # Add in 'unknown', 'inconclusive', and 'rabbit/hare'
+
             ## Need to purge any duplicates from the ZooMS and DNA tables first
-            # First reduce the respect tables' species columns to non-NA values that are unique for each SPECIMEN_ID
-            validZooms <- unique(db$ZOOMS[!is.na(SPECIES_ZOOMS), list(SPECIMEN_ID, SPECIES_ZOOMS)])
-            validDNA <- unique(db$DNA[!is.na(SPECIES_DNA), list(SPECIMEN_ID, SPECIES_DNA)])
+            # First reduce the respective tables' species columns to non-NA values that are unique for each SPECIMEN_ID
+            validZooms <- unique(db$ZOOMS[!is.na(SPECIES_ZOOMS) & !SPECIES_ZOOMS %in% vagueTaxa, list(SPECIMEN_ID, SPECIES_ZOOMS)])
+            validDNA <- unique(db$DNA[!is.na(SPECIES_DNA) & !SPECIES_DNA %in% vagueTaxa, list(SPECIMEN_ID, SPECIES_DNA)])
 
             # Then check for remaining duplicate SPECIMEN_IDs, which must have contradictory species info
             dupZooms <- validZooms$SPECIMEN_ID[duplicated(validZooms$SPECIMEN_ID)]
@@ -280,19 +282,23 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
             specInfo <- merge(specInfo, specCONT[, list(CONTEXT_ID, CONTEXT_BEST, CONTEXT_BEST_TYPE)],
                               by = "CONTEXT_ID", all = T)
 
-            ## Now actually chose with source of info is most solid
+            ## Now actually chose which source of info is most solid
             # By default, go with best from SPECIMEN
             specInfo[, SPECIES_BEST_SOURCE := ""]
 
             # If CONTEXT scores higher, take that - but flag it as such
-            specInfo[CONTEXT_BEST_TYPE > SPEC_BEST_TYPE, SPECIES_BEST_AUTO := CONTEXT_BEST]
-            specInfo[CONTEXT_BEST_TYPE > SPEC_BEST_TYPE, SPECIES_BEST_SOURCE := " (by association)"]
-            specInfo[CONTEXT_BEST_TYPE > SPEC_BEST_TYPE, SPEC_BEST_TYPE := CONTEXT_BEST_TYPE]
+            # APPLY TO RATS ONLY, so tha thte presence of a confirmed rat in a context doesn't contaminate other taxa
+            specInfo[SPECIES_BEST %in% 1:3 & CONTEXT_BEST_TYPE > SPEC_BEST_TYPE, SPECIES_BEST_AUTO := CONTEXT_BEST]
+            specInfo[SPECIES_BEST %in% 1:3 & CONTEXT_BEST_TYPE > SPEC_BEST_TYPE, SPECIES_BEST_SOURCE := " (by association)"]
+            specInfo[SPECIES_BEST %in% 1:3 & CONTEXT_BEST_TYPE > SPEC_BEST_TYPE, SPEC_BEST_TYPE := CONTEXT_BEST_TYPE]
 
             # likewise for INDIVIDUAL (here we'll also default to INDIVIDUAL where species hasn't been recorded for each specimen)
             specInfo[INDIV_BEST_TYPE > SPEC_BEST_TYPE | is.na(SPEC_BEST_TYPE), SPECIES_BEST_AUTO := INDIV_BEST]
             specInfo[INDIV_BEST_TYPE > SPEC_BEST_TYPE | (is.na(SPEC_BEST_TYPE) & !is.na(INDIV_BEST)), SPECIES_BEST_SOURCE := " (from individual)"]
             specInfo[INDIV_BEST_TYPE > SPEC_BEST_TYPE | is.na(SPEC_BEST_TYPE), SPEC_BEST_TYPE := INDIV_BEST_TYPE]
+
+            # Correct rats with 'unknown' ZooMS, since potential rat species are all known
+            specInfo[SPECIES_BEST == 4 & SPECIES_BEST_AUTO %in% 1:3, SPECIES_BEST_AUTO := 4]
 
             # Tidy into a single TYPE column
             codes <- c("Morph", "Morph - confident", "Known species", "Molecular")
