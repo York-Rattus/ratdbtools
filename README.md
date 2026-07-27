@@ -2,8 +2,6 @@
 
 This is a package of functions for use with the RATTUS project database. Currently it is focused on importing and exporting tables between different formats (Google, MySQL, CSV dump) but should expand to cover typical queries, map outputs, etc.
 
-**Scroll to the bottom for the generic bitbucket readme instructions on using the repo**
-
 ### Installing ratdbtools
 
 Since the repo is structured as a package, you can install from inside R using the **devtools** package:
@@ -36,7 +34,7 @@ These import a version of the RATTUS database from the specified location, and s
 * **keyfields** Character vector of tables (from PHASE, SPECIMEN, ASSEMBLAGE) into which key fields should be merged.
   
 #### rattusPullGoogle - import database from Google Sheets version (now unlikely to be used)
-`x <- rattusPull(litMod, specMod)`
+`x <- rattusPullGoogle(litMod, specMod)`
 
 * **litMod** URI for the site and literature database module (default provided).
 * **specMod** URI for the specimen and sample database module (default provided).
