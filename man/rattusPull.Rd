@@ -16,7 +16,7 @@ rattusPull(connection, bestDate = T, bestSpecies = T, prepMetrics = F)
 \item{prepMetrics}{Should the fusion status of the relevant end(s) for each metric value be worked out and appended to the METRICS table?}
 }
 \value{
-a list of (currently) 32 data.tables
+a list of (currently) 33 data.tables
 }
 \description{
 Pull in data from the RATTUS Google Sheets-format database.
