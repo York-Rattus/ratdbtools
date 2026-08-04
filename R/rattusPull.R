@@ -165,7 +165,6 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
       # 3. Score contexts, based on constituent specimens
       # 4. Merge all together
 
-      ## First merge in all the relevant columns (dropping anything that's not listed as rat)
       if(bestSpecies == T) {
 
             ## Get list of molecular IDs that aren't specific enough to override morpho
@@ -250,7 +249,6 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
             specIND[is.na(INDIV_BEST_TYPE), INDIV_BEST_TYPE := 1]    # archaeological; score just as morph, since there were no confident IDs
 
             ## Now do the same thing for CONTEXT
-            #### NEED TO AVOID CONTEXT IDS BASED ON NON-RATS!
             # Find molecular IDs by context
             molIDs <- unique(specInfo[!is.na(CONTEXT_ID) & SPEC_BEST_TYPE == 4 & SPECIES_BEST_AUTO %in% 1:2,
                                       list(CONTEXT_ID, SPECIES_BEST_AUTO)])
