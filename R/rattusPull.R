@@ -62,10 +62,20 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
             dateInfo <- merge(dateInfo,
                         db$CONTEXT[, list(CONTEXT_ID, CONTEXT_DATING, CONTEXT_START, CONTEXT_END, CONTEXT_NOTES)],
                         by = "CONTEXT_ID", all.x = T, all.y = F)
-            dateInfo <- merge(dateInfo,
-                        db$RADIOCARBON[, list(RADIOCARBON_ID, SPECIMEN_ID, RC_DATE, RC_SD, CAL_95_EARLY, CAL_95_LATE,
-                                              CAL_MEDIAN, RC_LAB_REF, RC_NOTES)],
-                        by = "SPECIMEN_ID", all.x = T, all.y = F)
+            # Collapse RADIOCARBON to one row per specimen, in case a specimen has been directly
+            # dated more than once - otherwise this merge (and the final merge back into SPECIMEN)
+            # would duplicate that specimen's row once per radiocarbon date
+            rcInfo <- db$RADIOCARBON[, list(RADIOCARBON_ID, SPECIMEN_ID, RC_DATE, RC_SD, CAL_95_EARLY, CAL_95_LATE,
+                                            CAL_MEDIAN, RC_LAB_REF, RC_NOTES)]
+            rcInfo[, RC_LABEL := paste0(RC_LAB_REF, ": ", RC_DATE, "±", RC_SD, " BP")]
+            rcInfo <- rcInfo[, list(RC_LABEL = paste(RC_LABEL, collapse = ", "),
+                                    CAL_95_EARLY = min(CAL_95_EARLY, na.rm = T),
+                                    CAL_95_LATE = max(CAL_95_LATE, na.rm = T),
+                                    CAL_MEDIAN = mean(CAL_MEDIAN, na.rm = T),
+                                    RC_NOTES = if(all(is.na(RC_NOTES))) NA_character_ else paste(RC_NOTES[!is.na(RC_NOTES)], collapse = ", "),
+                                    RC_MULTIPLE = .N > 1),
+                             by = SPECIMEN_ID]
+            dateInfo <- merge(dateInfo, rcInfo, by = "SPECIMEN_ID", all.x = T, all.y = F)
             dateInfo <- merge(dateInfo,
                         db$INDIVIDUAL[, list(INDIVIDUAL_ID, INDIVIDUAL_TYPE, INDIV_DATE, INDIV_DATE_TYPE, INDIVIDUAL_NOTES)],
                         by = "INDIVIDUAL_ID", all.x = T, all.y = F)
@@ -87,42 +97,42 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
             # Types (b) and (c) - we'll do these together
             # This is slow code, looping throught the table, but easier than attempting to vectorise properly
             for(i in 1:nrow(dateInfo)) {
-                  # Find context-mates with dates
+                  # A specimen's own direct radiocarbon date always wins, regardless of its
+                  # (possibly still NA/unconfirmed) species ID - the species filter below is only
+                  # meant to restrict which OTHER specimens' dates can be borrowed by association
+                  if(!is.na(dateInfo[i, CAL_95_EARLY])) {
+                        dateInfo[i, DATE_BEST := RC_LABEL]
+                        dateInfo[i, DATE_FROM_BEST := CAL_95_EARLY]
+                        dateInfo[i, DATE_TO_BEST := CAL_95_LATE]
+                        dateInfo[i, DATE_BEST_NOTES := RC_NOTES]
+                        dateInfo[i, MID := as.numeric(CAL_MEDIAN)]
+                        dateInfo[i, DATE_BEST_TYPE := ifelse(RC_MULTIPLE, "Direct radiocarbon (multiple)", "Direct radiocarbon")]
+                        next
+                  }
+
+                  # No direct date on this specimen - look for context-mates with dates
+                  # (restricted to rats, so a dated non-rat can't indirectly date this context by association)
                   contextDates <- dateInfo[CONTEXT_ID == dateInfo[i, CONTEXT_ID]]
                   contextDates <- contextDates[!is.na(CAL_95_EARLY) & SPECIES_BEST %in% 1:3]
 
                   # If there is exactly one match, use that
                   if(nrow(contextDates) == 1) {
-                        dateInfo[i, DATE_BEST := with(contextDates, paste0(RC_LAB_REF, ": ", RC_DATE, "±", RC_SD, " BP"))]
+                        dateInfo[i, DATE_BEST := contextDates$RC_LABEL]
                         dateInfo[i, DATE_FROM_BEST := contextDates$CAL_95_EARLY]
                         dateInfo[i, DATE_TO_BEST := contextDates$CAL_95_LATE]
                         dateInfo[i, DATE_BEST_NOTES := contextDates$RC_NOTES]
                         dateInfo[i, MID := as.numeric(contextDates$CAL_MEDIAN)]
-                        if(contextDates$SPECIMEN_ID == dateInfo[i, SPECIMEN_ID]) {
-                              dateInfo[i, DATE_BEST_TYPE := "Direct radiocarbon"]
-                        } else {
-                              dateInfo[i, DATE_BEST_TYPE := "Indirect radiocarbon"]
-                        }
+                        dateInfo[i, DATE_BEST_TYPE := "Indirect radiocarbon"]
                   }
 
-                  # If multiple dates, check for a direct date and merge the others if there isn't one
+                  # If multiple dates, merge them all together
                   if(nrow(contextDates) > 1) {
-                        if(!is.na(dateInfo[i, CAL_95_EARLY])) {
-                              dateInfo[i, DATE_BEST := paste0(RC_LAB_REF, ": ", RC_DATE, "±", RC_SD, " BP")]
-                              dateInfo[i, DATE_FROM_BEST := CAL_95_EARLY]
-                              dateInfo[i, DATE_TO_BEST := CAL_95_LATE]
-                              dateInfo[i, DATE_BEST_NOTES := RC_NOTES]
-                              dateInfo[i, MID := as.numeric(CAL_MEDIAN)]
-                              dateInfo[i, DATE_BEST_TYPE := "Direct radiocarbon"]
-                        } else {
-                              contextDates[, DATE_BEST := paste0(RC_LAB_REF, ": ", RC_DATE, "±", RC_SD, " BP")]
-                              dateInfo[i, DATE_BEST := paste(contextDates$DATE_BEST, collapse = ", ")]
-                              dateInfo[i, DATE_FROM_BEST := min(contextDates$CAL_95_EARLY)]
-                              dateInfo[i, DATE_TO_BEST := max(contextDates$CAL_95_LATE)]
-                              dateInfo[i, DATE_BEST_NOTES := paste(contextDates$RC_NOTES, collapse = ", ")]
-                              dateInfo[i, MID := mean(contextDates$CAL_MEDIAN)]  # Hacky but it'll do!
-                              dateInfo[i, DATE_BEST_TYPE := "Indirect radiocarbon (multiple)"]
-                        }
+                        dateInfo[i, DATE_BEST := paste(contextDates$RC_LABEL, collapse = ", ")]
+                        dateInfo[i, DATE_FROM_BEST := min(contextDates$CAL_95_EARLY)]
+                        dateInfo[i, DATE_TO_BEST := max(contextDates$CAL_95_LATE)]
+                        dateInfo[i, DATE_BEST_NOTES := paste(contextDates$RC_NOTES, collapse = ", ")]
+                        dateInfo[i, MID := mean(contextDates$CAL_MEDIAN)]  # Hacky but it'll do!
+                        dateInfo[i, DATE_BEST_TYPE := "Indirect radiocarbon (multiple)"]
                   }
             }
 
