@@ -1,7 +1,7 @@
 #' Decode lookup columns in all tables in an R copy of the database. Optionally, also performs merges to pull
 #' in commonly-used key fields from other tables to the PHASE, SPECIMEN, and/or ASSEMBLAGE tables. This option is
 #' intended as a quick-and-dirty shortcut when performing ad hoc queries - it is not recommended in serious analysis
-#' scripts, for which bespoke merges between tables would be mopre appropriate
+#' scripts, for which bespoke merges between tables would be more appropriate
 #'
 #' @param db List of tables to amend, in format produced by one of the rattusPull functions.
 #' @param lookups Should true lookup fields be decoded? TRUE by default; set to FALSE where already decoded.

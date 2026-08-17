@@ -19,9 +19,24 @@
 #' Co-location of other techniques on a row carries no meaning: a ZooMS result
 #' and a date on the same row were not necessarily run on the same material.
 #'
+#' DNA screening and deep-sequencing quant fields (raw reads, % endogenous,
+#' etc.) are reported under a single unprefixed name each: the deep value is
+#' used where present, otherwise the screening value stands in for it. A
+#' `HAS_DEEP_SEQ` flag is returned in their place, recording whether deep
+#' data has actually landed - unlike `PICKED_FOR_DEEP_SEQ`, which just
+#' records selection and may be TRUE while sequencing is still pending.
+#'
+#' When `incWeights` is set, `WEIGHT_MG` and a derived `CURRENT_WEIGHT` are
+#' added as core fields. `CURRENT_WEIGHT` is `WEIGHT_MG` where SAMPLE has no
+#' rows for the specimen, the summed `CURRENT_WEIGHT` of its Bone-tagged subsamples
+#' where all of those are recorded, or NA where a bone subsample exists but
+#' isn't fully weighed, or samples exist with none tagged Bone. A specimen
+#' flagged as DESTROYED overrides all of the above to 0.
+#'
 #' @param db List of data.tables as created by one of the rattusPull functions
-#' @param critField Character. What field should be used to select specimens? May name a column from any of SITE, PHASE, CONTEXT or SPECIMEN. Default "SITE_NAME"
 #' @param critValues Vector of values of `critField` to include. NULL for all.
+#' @param critField Character. What field should be used to select specimens? May name a column from any of SITE, PHASE, CONTEXT or SPECIMEN. Default "SITE_NAME"
+#' @param loanedOnly Logical. Should only specimens that were either borrowed or sampled be included? Default TRUE.
 #' @param context Integer. Should context data be included? 0 for no, 1 for yes, 2 to only show specimens for which it is present. Default 1.
 #' @param rc Integer. Should radiocarbon data be included? 0 for no, 1 for yes, 2 to only show specimens for which it is present. Default 1.
 #' @param isotopes Integer. Should isotope data be included? 0 for no, 1 for yes, 2 to only show specimens for which it is present. Isotope results reported alongside a date are included whenever `rc` is set, whatever this is.
@@ -34,7 +49,11 @@
 #' @param isotopeFields Character vector of isotope fields to include. NULL for all.
 #' @param zoomsFields Character vector of zooms fields to include. NULL for all.
 #' @param dnaFields Character vector of DNA fields to include. NULL for all.
+#'   Screening (`S_`) quant fields are merged into their unprefixed
+#'   equivalents before this selection is applied, so they cannot be named
+#'   here; use `HAS_DEEP_SEQ` for whether deep data is actually present.
 #' @param metricCode Character vector of metric codes to include. If not supplied, all codes will be included
+#' @param incWeights Logical. Should WEIGHT_MG and a derived CURRENT_WEIGHT be included as core fields? Default FALSE.
 #' @param inconclusive Character vector of values treated as non-answers when reconciling repeated identifications.
 #' @param repeatFields Character vector of core fields repeated on every row of a specimen rather than blanked.
 #' @param suppressEmpty Logical. Should entirely empty columns be removed? Default FALSE.
@@ -43,12 +62,14 @@
 #' @import data.table
 #' @export
 ratReport <- function(db,
-                      critField = "SITE_NAME",
                       critValues = NULL,
+                      critField = "SITE_NAME",
+                      loanedOnly = TRUE,
                       context = 0, rc = 1, isotopes = 1, zooms = 0, dna = 0, metrics = 0,
                       coreFields = c("SPECIMEN_ID", "SITE_NAME", "SETTLEMENT", "PHASE_AT_SITE", "DATING", "CONTEXT",
                                      "ID_SOURCE", "SPECIES_SOURCE", "SPECIES_MORPH",
-                                     "SPECIES_ZOOMS", "SPECIES_DNA", "ELEMENT", "SIDE"),
+                                     "SPECIES_ZOOMS", "SPECIES_DNA", "ELEMENT", "SIDE",
+                                     "SCAN_STATUS", "ZOOMS_STATUS", "RC_STATUS", "DNA_STATUS", "ISOTOPE_STATUS", "CSIA_STATUS"),
                       contextFields = c("CONTEXT", "TRENCH_SECTOR", "FEATURE", "LAYER", "DEPTH", "ACCESSION_NO",
                                         "CONTEXT_TYPE", "DATE_EXCAVATED", "CONTEXT_DATING"),
                       rcFields = c("RC_LAB", "RC_LAB_REF", "RC_DATE", "RC_SD", "d13C_AMS", "d13C", "d15N", "C_N", "CAL_MEDIAN", "CAL_95_EARLY", "CAL_95_LATE", "RC_NOTES"),
@@ -56,9 +77,10 @@ ratReport <- function(db,
                                         "ANALYTICAL_REPLICATES_COUNT", "SD_d13C", "SD_d15N", "ISOTOPE_NOTES"),
                       zoomsFields = c("ZOOMS_MASS", "ZOOMS_NOTES", "a1_508", "a2_978", "a2_978_HYP", "a2_484", "a2_502", "a2_220", "a2_793", "a2_454", "a1_934", "a1_586",
                                       "a1_586_HYP", "a2_757", "a2_757_HYP", "a2_10"),
-                      dnaFields = c("DNA_LAB", "S_NO_RAW_READS", "S_NO_UNIQUE_MAPPED_READS", "S_PC_ENDOGENOUS", "S_AVERAGE_MAPPED_LENGTH",  "PICKED_FOR_DEEP_SEQ",
-                                    "NO_RAW_READS", "NO_UNIQUE_MAPPED_READS", "PC_ENDOGENOUS", "AVERAGE_MAPPED_LENGTH", "NUC_COVERAGE", "SEX_DNA", "MT_COVERAGE", "MT_HAPLOGROUP"),
+                      dnaFields = c("DNA_LAB", "NO_RAW_READS", "NO_UNIQUE_MAPPED_READS", "PC_ENDOGENOUS", "AVERAGE_MAPPED_LENGTH",
+                                    "HAS_DEEP_SEQ", "NUC_COVERAGE", "SEX_DNA", "MT_COVERAGE", "MT_HAPLOGROUP"),
                       metricCodes = NULL,
+                      incWeights = FALSE,
                       inconclusive = c("UNKNOWN", "Inconclusive"),
                       repeatFields = c("SPECIMEN_ID", "ID_SOURCE"),
                       suppressEmpty = FALSE) {
@@ -84,6 +106,61 @@ ratReport <- function(db,
             x <- toupper(trimws(as.character(x)))
             x[x == ""] <- NA_character_
             x
+      }
+
+      # Fold DNA screening quant fields into their deep-sequencing equivalents.
+      # Where deep data is missing, the screening value stands in for it; where
+      # both exist, the deep value already reflects the screening run, so the S_
+      # column is dropped rather than reconciled. A derived flag records whether
+      # deep data has actually landed, since PICKED_FOR_DEEP_SEQ only records
+      # selection and may be TRUE while sequencing is still pending.
+      mergeDNAScreening <- function(dna) {
+            dna <- copy(dna)
+            quantFields <- c("NO_RAW_READS", "NO_UNIQUE_MAPPED_READS", "PC_ENDOGENOUS", "AVERAGE_MAPPED_LENGTH")
+            screenFields <- paste0("S_", quantFields)
+            present <- intersect(quantFields, names(dna))
+            if(length(present)) {
+                  dna[, HAS_DEEP_SEQ := Reduce(`|`, lapply(.SD, function(x) !is.na(x))), .SDcols = present]
+            } else {
+                  dna[, HAS_DEEP_SEQ := NA]
+            }
+            for(i in seq_along(quantFields)) {
+                  f <- quantFields[i]; s <- screenFields[i]
+                  if(f %in% names(dna) && s %in% names(dna)) {
+                        dna[is.na(get(f)), (f) := get(s)]
+                  }
+            }
+            drop <- intersect(screenFields, names(dna))
+            if(length(drop)) dna[, (drop) := NULL]
+            dna
+      }
+
+      # Resolve a specimen's current bone weight from the SAMPLE table. A
+      # specimen with no SAMPLE rows is assumed unsampled, so its starting
+      # WEIGHT_MG still applies. Once any bone subsample has been taken the
+      # starting weight can no longer be trusted: the current weight is the
+      # sum of bone subsamples' own CURRENT_WEIGHT if all are recorded,
+      # otherwise NA so it can be checked. A specimen recorded as destroyed
+      # has no bone left regardless of the above.
+      resolveWeights <- function(specimen, sample) {
+            sp <- specimen[, c("SPECIMEN_ID", "WEIGHT_MG", if("DESTROYED" %in% names(specimen)) "DESTROYED"), with = F]
+            if(!"DESTROYED" %in% names(sp)) sp[, DESTROYED := NA_integer_]
+
+            s <- copy(sample)[SPECIMEN_ID %in% sp$SPECIMEN_ID]
+            s[, .BONE := toupper(trimws(as.character(SAMPLE_TYPE))) == "BONE"]
+            agg <- s[, .(.NSAMP = .N, .NBONE = sum(.BONE),
+                         .BONEWT = if(sum(.BONE) > 0 && !anyNA(CURRENT_WEIGHT[.BONE])) sum(CURRENT_WEIGHT[.BONE]) else NA_real_),
+                     by = SPECIMEN_ID]
+
+            out <- merge(sp, agg, by = "SPECIMEN_ID", all.x = T, all.y = F)
+            out[is.na(.NSAMP), .NSAMP := 0L]
+            out[is.na(.NBONE), .NBONE := 0L]
+
+            out[, CURRENT_WEIGHT := fifelse(.NSAMP == 0L, WEIGHT_MG,
+                                      fifelse(.NBONE > 0L, .BONEWT, NA_real_))]
+            out[!is.na(DESTROYED) & DESTROYED != 0, CURRENT_WEIGHT := 0]
+
+            out[, .(SPECIMEN_ID, CURRENT_WEIGHT)]
       }
 
       # Work out which report row each specialist result belongs on. Dates anchor
@@ -157,6 +234,7 @@ ratReport <- function(db,
       if(is.integer(data$SPECIMEN$SPECIES_MORPH)) {
             data <- rattusDecode(data)
       }
+      if(!is.null(data$DNA)) data$DNA <- mergeDNAScreening(data$DNA)
 
       # Merge SITE, PHASE, CONTEXT, SPECIMEN tables. These are all many-to-one
       # going up, so no specimen can be duplicated here.
@@ -170,6 +248,12 @@ ratReport <- function(db,
                   stop("critField '", critField, "' is not a column of the merged core tables.")
             }
             core <- core[get(critField) %in% critValues]
+      }
+      if(loanedOnly) {
+            if(!"RECORD_TYPE" %in% names(core)) {
+                  stop("RECORD_TYPE is not a column of the merged core tables.")
+            }
+            core <- core[RECORD_TYPE %in% c("Loaned", "Returned", "Sampled in situ")]
       }
       if(context == 2) core <- core[CONTEXT_ID %in% data$CONTEXT$CONTEXT_ID]
 
@@ -240,6 +324,12 @@ ratReport <- function(db,
             collapsed <- c(collapsed, fld)
       }
       for(t in names(show)) show[[t]] <- setdiff(show[[t]], collapsed)
+
+      # Add WEIGHT_MG and a resolved CURRENT_WEIGHT as core fields, if requested.
+      if(incWeights) {
+            coreFields <- unique(c(coreFields, "WEIGHT_MG", "CURRENT_WEIGHT"))
+            core <- merge(core, resolveWeights(core, data$SAMPLE), by = "SPECIMEN_ID", all.x = T, all.y = F)
+      }
 
       # Metrics are long-format, so cast to wide rather than treating them as
       # replicates. Repeated measurements of the same code are averaged.
