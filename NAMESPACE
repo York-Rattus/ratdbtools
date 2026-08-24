@@ -2,6 +2,7 @@
 
 export(deTag)
 export(litStatus)
+export(ratReport)
 export(rattusDecode)
 export(rattusDump)
 export(rattusPull)

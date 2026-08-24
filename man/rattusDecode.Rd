@@ -5,7 +5,7 @@
 \title{Decode lookup columns in all tables in an R copy of the database. Optionally, also performs merges to pull
 in commonly-used key fields from other tables to the PHASE, SPECIMEN, and/or ASSEMBLAGE tables. This option is
 intended as a quick-and-dirty shortcut when performing ad hoc queries - it is not recommended in serious analysis
-scripts, for which bespoke merges between tables would be mopre appropriate}
+scripts, for which bespoke merges between tables would be more appropriate}
 \usage{
 rattusDecode(db, lookups = T, keyfields = NULL)
 }
@@ -23,5 +23,5 @@ A list of tables matching the input, but with columns merged in the ways defined
 Decode lookup columns in all tables in an R copy of the database. Optionally, also performs merges to pull
 in commonly-used key fields from other tables to the PHASE, SPECIMEN, and/or ASSEMBLAGE tables. This option is
 intended as a quick-and-dirty shortcut when performing ad hoc queries - it is not recommended in serious analysis
-scripts, for which bespoke merges between tables would be mopre appropriate
+scripts, for which bespoke merges between tables would be more appropriate
 }
