@@ -69,8 +69,8 @@ rattusPull <- function(connection, bestDate = T, bestSpecies = T, prepMetrics = 
                                             CAL_MEDIAN, RC_LAB_REF, RC_NOTES)]
             rcInfo[, RC_LABEL := paste0(RC_LAB_REF, ": ", RC_DATE, "±", RC_SD, " BP")]
             rcInfo <- rcInfo[, list(RC_LABEL = paste(RC_LABEL, collapse = ", "),
-                                    CAL_95_EARLY = min(CAL_95_EARLY, na.rm = T),
-                                    CAL_95_LATE = max(CAL_95_LATE, na.rm = T),
+                                    CAL_95_EARLY = if(all(is.na(CAL_95_EARLY))) NA_integer_ else min(CAL_95_EARLY, na.rm = T),
+                                    CAL_95_LATE = if(all(is.na(CAL_95_LATE))) NA_integer_ else max(CAL_95_LATE, na.rm = T),
                                     CAL_MEDIAN = mean(CAL_MEDIAN, na.rm = T),
                                     RC_NOTES = if(all(is.na(RC_NOTES))) NA_character_ else paste(RC_NOTES[!is.na(RC_NOTES)], collapse = ", "),
                                     RC_MULTIPLE = .N > 1),
